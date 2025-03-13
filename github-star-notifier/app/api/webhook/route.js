@@ -38,20 +38,21 @@ export async function POST(req) {
     // 解析请求体
     const payload = JSON.parse(bodyString);
     
-    // 从数据库中查找对应的订阅信息
-    // 这里应该根据 payload.repository.full_name 查找对应的订阅记录
-    // 包括 email 和 secret
-    
-    // 假设我们从数据库中获取了以下信息
+    // 获取仓库名称
     const repoName = payload.repository.full_name;
-    const secret = "从数据库中获取的密钥"; // 这里应该是从数据库中获取的
-    const subscriberEmail = "从数据库中获取的邮箱"; // 这里应该是从数据库中获取的
+    
+    // 由于我们没有实现数据库，暂时使用环境变量中的密钥
+    // 在实际应用中，应该从数据库中查找对应仓库的密钥
+    const secret = process.env.GITHUB_WEBHOOK_SECRET;
     
     // 验证签名
     const hmac = crypto.createHmac('sha256', secret);
     const digest = 'sha256=' + hmac.update(bodyString).digest('hex');
     
     if (signature !== digest) {
+      console.error('签名验证失败');
+      console.error('收到的签名:', signature);
+      console.error('计算的签名:', digest);
       return NextResponse.json({ error: '签名无效' }, { status: 401 });
     }
     
@@ -59,6 +60,9 @@ export async function POST(req) {
     if (payload.action === 'starred') {
       const stargazerName = payload.sender.login;
       const stargazerUrl = payload.sender.html_url;
+      
+      // 在实际应用中，应该从数据库中查找订阅了该仓库的所有邮箱
+      const subscriberEmail = process.env.EMAIL_TO;
       
       // 发送邮件
       await transporter.sendMail({

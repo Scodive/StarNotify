@@ -27,7 +27,7 @@ export async function POST(req) {
     }
     
     // 生成随机的 Webhook 密钥
-    const secret = crypto.randomBytes(20).toString('hex');
+    const secret = process.env.GITHUB_WEBHOOK_SECRET;
     
     // 构建 Webhook URL
     const webhookUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'https://star-notify.vercel.app'}/api/webhook`;

@@ -30,7 +30,7 @@ export default function Home() {
 
     try {
       // 从仓库URL中提取用户名和仓库名
-      const urlPattern = /github\.com\/([^\/]+)\/([^\/]+)/;
+      const urlPattern = /github\.com\/([^\/\s]+)\/([^\/\s]+)/;
       const match = repoUrl.match(urlPattern);
       
       if (!match) {
