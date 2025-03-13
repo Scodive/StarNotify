@@ -48,8 +48,13 @@ export default function Home() {
       setMessage("订阅成功！您将收到该仓库的 Star 通知");
       setRepoUrl("");
       setEmail("");
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      // 使用 unknown 代替 any
+      if (err instanceof Error) {
+        setError(err.message);
+      } else {
+        setError("发生未知错误");
+      }
     } finally {
       setLoading(false);
     }
