@@ -16,6 +16,7 @@ const transporter = nodemailer.createTransport({
 export async function POST(req) {
   try {
     const { owner, repo, email, secret } = await req.json();
+    console.log('收到验证请求:', { owner, repo, email });
     
     if (!owner || !repo || !email || !secret) {
       return NextResponse.json(
@@ -44,30 +45,60 @@ export async function POST(req) {
     try {
       // 创建 Edge Config 客户端
       const edgeConfig = createClient(process.env.EDGE_CONFIG);
+      console.log('Edge Config 客户端已创建');
       
       // 获取现有的订阅列表
-      let subscriptions = await edgeConfig.get('subscriptions') || [];
+      console.log('正在获取订阅列表...');
+      let subscriptions = await edgeConfig.get('subscriptions');
+      console.log('获取到的订阅列表:', subscriptions);
+      
+      // 确保 subscriptions 是数组
+      if (!Array.isArray(subscriptions)) {
+        console.log('订阅列表不是数组，初始化为空数组');
+        subscriptions = [];
+      }
       
       // 查找并更新订阅状态
+      let found = false;
       const updatedSubscriptions = subscriptions.map(sub => {
         if (sub.owner === owner && sub.repo === repo && sub.email === email) {
+          found = true;
+          console.log('找到匹配的订阅，更新状态为 active');
           return { ...sub, status: 'active', verifiedAt: new Date().toISOString() };
         }
         return sub;
       });
       
+      if (!found) {
+        console.log('未找到匹配的订阅，添加新订阅');
+        updatedSubscriptions.push({
+          owner,
+          repo,
+          email,
+          createdAt: new Date().toISOString(),
+          status: 'active',
+          verifiedAt: new Date().toISOString()
+        });
+      }
+      
       // 保存更新后的订阅列表
+      console.log('正在保存更新后的订阅列表...');
       await edgeConfig.set('subscriptions', updatedSubscriptions);
+      console.log('订阅列表已保存');
+      
+      // 再次获取订阅列表以验证保存是否成功
+      const verifySubscriptions = await edgeConfig.get('subscriptions');
+      console.log('验证保存后的订阅列表:', verifySubscriptions);
       
       console.log(`已激活订阅: ${owner}/${repo} -> ${email}`);
     } catch (edgeConfigError) {
       console.error('Edge Config 操作失败:', edgeConfigError);
-      // 即使 Edge Config 失败，我们仍然发送确认邮件
       console.log('Edge Config 失败，但继续发送确认邮件');
     }
     
     // 发送确认邮件
     try {
+      console.log('正在发送确认邮件...');
       await transporter.sendMail({
         from: process.env.EMAIL_FROM,
         to: email,

@@ -28,11 +28,22 @@ export async function POST(req) {
     }
     
     try {
+      console.log('开始处理订阅请求:', { owner, repo, email });
+      
       // 创建 Edge Config 客户端
       const edgeConfig = createClient(process.env.EDGE_CONFIG);
+      console.log('Edge Config 客户端已创建');
       
       // 获取现有的订阅列表
-      let subscriptions = await edgeConfig.get('subscriptions') || [];
+      console.log('正在获取订阅列表...');
+      let subscriptions = await edgeConfig.get('subscriptions');
+      console.log('获取到的订阅列表:', subscriptions);
+      
+      // 确保 subscriptions 是数组
+      if (!Array.isArray(subscriptions)) {
+        console.log('订阅列表不是数组，初始化为空数组');
+        subscriptions = [];
+      }
       
       // 检查是否已存在相同的订阅
       const existingSubscription = subscriptions.find(
@@ -40,6 +51,8 @@ export async function POST(req) {
       );
       
       if (existingSubscription) {
+        console.log('找到现有订阅:', existingSubscription);
+        
         // 如果已存在但状态是 pending，则返回相同的数据让用户继续设置
         if (existingSubscription.status === 'pending') {
           return NextResponse.json({ 
@@ -63,16 +76,25 @@ export async function POST(req) {
       }
       
       // 添加新的订阅
-      subscriptions.push({
+      const newSubscription = {
         owner,
         repo,
         email,
         createdAt: new Date().toISOString(),
         status: 'pending' // 待验证状态
-      });
+      };
+      
+      console.log('添加新订阅:', newSubscription);
+      subscriptions.push(newSubscription);
       
       // 保存更新后的订阅列表
+      console.log('正在保存更新后的订阅列表...');
       await edgeConfig.set('subscriptions', subscriptions);
+      console.log('订阅列表已保存');
+      
+      // 再次获取订阅列表以验证保存是否成功
+      const verifySubscriptions = await edgeConfig.get('subscriptions');
+      console.log('验证保存后的订阅列表:', verifySubscriptions);
       
       console.log(`已添加订阅: ${owner}/${repo} -> ${email}`);
       
