@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
 import nodemailer from 'nodemailer';
-import crypto from 'crypto';
 import { get, set } from '@vercel/edge-config';
 
 // 配置邮件发送器
@@ -33,6 +32,34 @@ export async function POST(req) {
     
     // 获取现有的订阅列表
     let subscriptions = await get('subscriptions') || [];
+    
+    // 检查是否已存在相同的订阅
+    const existingSubscription = subscriptions.find(
+      sub => sub.owner === owner && sub.repo === repo && sub.email === email
+    );
+    
+    if (existingSubscription) {
+      // 如果已存在但状态是 pending，则返回相同的数据让用户继续设置
+      if (existingSubscription.status === 'pending') {
+        return NextResponse.json({ 
+          success: true,
+          owner,
+          repo,
+          email,
+          secret,
+          webhookUrl,
+          message: '继续完成 Webhook 设置'
+        });
+      }
+      
+      // 如果已存在且状态是 active，则通知用户
+      if (existingSubscription.status === 'active') {
+        return NextResponse.json({ 
+          success: false, 
+          error: '您已经订阅了这个仓库' 
+        }, { status: 400 });
+      }
+    }
     
     // 添加新的订阅
     subscriptions.push({
