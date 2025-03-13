@@ -27,10 +27,10 @@ export async function POST(req) {
       );
     }
     
-    // 创建 Edge Config 客户端
-    const edgeConfig = createClient(process.env.EDGE_CONFIG);
-    
     try {
+      // 创建 Edge Config 客户端
+      const edgeConfig = createClient(process.env.EDGE_CONFIG);
+      
       // 获取现有的订阅列表
       let subscriptions = await edgeConfig.get('subscriptions') || [];
       
