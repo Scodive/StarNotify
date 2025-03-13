@@ -1,17 +1,5 @@
 import { NextResponse } from 'next/server';
-import nodemailer from 'nodemailer';
 import { get, set } from '@vercel/edge-config';
-
-// 配置邮件发送器
-const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST,
-  port: process.env.SMTP_PORT,
-  secure: true,
-  auth: {
-    user: process.env.SMTP_USER,
-    pass: process.env.SMTP_PASSWORD,
-  },
-});
 
 export async function POST(req) {
   try {
