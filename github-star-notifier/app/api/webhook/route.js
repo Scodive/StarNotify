@@ -63,14 +63,3 @@ export async function POST(req) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 }
-
-export default function Home() {
-  return (
-    <main className="flex min-h-screen flex-col items-center justify-center p-24">
-      <h1 className="text-4xl font-bold mb-6">StarNotify</h1>
-      <p className="text-xl">
-        一个简单高效的工具，当你的 GitHub 仓库收到新的 Star 时，自动发送邮件通知。
-      </p>
-    </main>
-  );
-}
