@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { get, set } from '@vercel/edge-config';
+import { createClient } from '@vercel/edge-config';
 
 export async function POST(req) {
   try {
@@ -18,8 +18,11 @@ export async function POST(req) {
     // 构建 Webhook URL
     const webhookUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'https://star-notify.vercel.app'}/api/webhook`;
     
+    // 创建 Edge Config 客户端
+    const edgeConfig = createClient(process.env.EDGE_CONFIG);
+    
     // 获取现有的订阅列表
-    let subscriptions = await get('subscriptions') || [];
+    let subscriptions = await edgeConfig.get('subscriptions') || [];
     
     // 检查是否已存在相同的订阅
     const existingSubscription = subscriptions.find(
@@ -59,7 +62,7 @@ export async function POST(req) {
     });
     
     // 保存更新后的订阅列表
-    await set('subscriptions', subscriptions);
+    await edgeConfig.set('subscriptions', subscriptions);
     
     console.log(`已添加订阅: ${owner}/${repo} -> ${email}`);
     

@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import nodemailer from 'nodemailer';
 import crypto from 'crypto';
 import { Readable } from 'stream';
-import { get } from '@vercel/edge-config';
+import { createClient } from '@vercel/edge-config';
 
 // 配置邮件发送器
 const transporter = nodemailer.createTransport({
@@ -95,8 +95,11 @@ export async function POST(req) {
       console.log('仓库:', fullRepoName);
       console.log('用户:', stargazerName);
       
+      // 创建 Edge Config 客户端
+      const edgeConfig = createClient(process.env.EDGE_CONFIG);
+      
       // 从 Edge Config 获取订阅列表
-      const subscriptions = await get('subscriptions') || [];
+      const subscriptions = await edgeConfig.get('subscriptions') || [];
       console.log('找到订阅数量:', subscriptions.length);
       
       // 查找订阅了该仓库的用户

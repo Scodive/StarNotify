@@ -1,6 +1,5 @@
-// app/api/admin/subscriptions/route.js
 import { NextResponse } from 'next/server';
-import { get } from '@vercel/edge-config';
+import { createClient } from '@vercel/edge-config';
 
 export async function GET(req) {
   try {
@@ -10,8 +9,11 @@ export async function GET(req) {
       return NextResponse.json({ error: '未授权' }, { status: 401 });
     }
     
+    // 创建 Edge Config 客户端
+    const edgeConfig = createClient(process.env.EDGE_CONFIG);
+    
     // 获取所有订阅
-    const subscriptions = await get('subscriptions') || [];
+    const subscriptions = await edgeConfig.get('subscriptions') || [];
     
     return NextResponse.json({ 
       success: true,
@@ -25,4 +27,4 @@ export async function GET(req) {
       { status: 500 }
     );
   }
-}
+} 

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import nodemailer from 'nodemailer';
-import { get, set } from '@vercel/edge-config';
+import { createClient } from '@vercel/edge-config';
 
 // 配置邮件发送器
 const transporter = nodemailer.createTransport({
@@ -32,8 +32,11 @@ export async function POST(req) {
       );
     }
     
+    // 创建 Edge Config 客户端
+    const edgeConfig = createClient(process.env.EDGE_CONFIG);
+    
     // 获取现有的订阅列表
-    let subscriptions = await get('subscriptions') || [];
+    let subscriptions = await edgeConfig.get('subscriptions') || [];
     
     // 查找并更新订阅状态
     const updatedSubscriptions = subscriptions.map(sub => {
@@ -44,7 +47,7 @@ export async function POST(req) {
     });
     
     // 保存更新后的订阅列表
-    await set('subscriptions', updatedSubscriptions);
+    await edgeConfig.set('subscriptions', updatedSubscriptions);
     
     console.log(`已激活订阅: ${owner}/${repo} -> ${email}`);
     
