@@ -3,13 +3,23 @@
 import { useState } from "react";
 import Image from "next/image";
 
+// 定义 WebhookData 接口
+interface WebhookData {
+  owner: string;
+  repo: string;
+  email: string;
+  secret: string;
+  webhookUrl: string;
+  success: boolean;
+}
+
 export default function Home() {
   const [repoUrl, setRepoUrl] = useState("");
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
-  const [webhookData, setWebhookData] = useState(null);
+  const [webhookData, setWebhookData] = useState<WebhookData | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -48,7 +58,7 @@ export default function Home() {
       }
       
       setMessage("请按照以下步骤设置 GitHub Webhook");
-      setWebhookData(data);
+      setWebhookData(data as WebhookData);
     } catch (err: unknown) {
       if (err instanceof Error) {
         setError(err.message);
