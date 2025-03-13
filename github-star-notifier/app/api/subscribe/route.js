@@ -1,7 +1,7 @@
-/* eslint-disable @typescript-eslint/no-unused-vars */
 import { NextResponse } from 'next/server';
 import nodemailer from 'nodemailer';
 import crypto from 'crypto';
+import { get, set } from '@vercel/edge-config';
 
 // 配置邮件发送器
 const transporter = nodemailer.createTransport({
@@ -14,7 +14,6 @@ const transporter = nodemailer.createTransport({
   },
 });
 
-
 export async function POST(req) {
   try {
     const { owner, repo, email } = await req.json();
@@ -26,15 +25,28 @@ export async function POST(req) {
       );
     }
     
-    // 生成随机的 Webhook 密钥
+    // 使用固定的 Webhook 密钥
     const secret = process.env.GITHUB_WEBHOOK_SECRET;
     
     // 构建 Webhook URL
     const webhookUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'https://star-notify.vercel.app'}/api/webhook`;
     
-    // 这里您可以将订阅信息存储到数据库中
-    // 例如使用 MongoDB, Supabase, Firebase 等
-    // 存储 owner, repo, email, secret 等信息
+    // 获取现有的订阅列表
+    let subscriptions = await get('subscriptions') || [];
+    
+    // 添加新的订阅
+    subscriptions.push({
+      owner,
+      repo,
+      email,
+      createdAt: new Date().toISOString(),
+      status: 'pending' // 待验证状态
+    });
+    
+    // 保存更新后的订阅列表
+    await set('subscriptions', subscriptions);
+    
+    console.log(`已添加订阅: ${owner}/${repo} -> ${email}`);
     
     return NextResponse.json({ 
       success: true,

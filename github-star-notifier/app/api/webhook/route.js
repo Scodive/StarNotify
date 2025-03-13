@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import nodemailer from 'nodemailer';
 import crypto from 'crypto';
 import { Readable } from 'stream';
+import { get } from '@vercel/edge-config';
 
 // 配置邮件发送器
 const transporter = nodemailer.createTransport({
@@ -85,31 +86,62 @@ export async function POST(req) {
     
     // 验证是否为 star 事件
     if (eventType === 'star' && payload.action === 'starred') {
-      const repoName = payload.repository?.full_name || '未知仓库';
+      const repoOwner = payload.repository?.owner?.login || '';
+      const repoName = payload.repository?.name || '';
+      const fullRepoName = payload.repository?.full_name || '未知仓库';
       const stargazerName = payload.sender?.login || '未知用户';
       const stargazerUrl = payload.sender?.html_url || '#';
-      console.log('仓库:', repoName);
+      
+      console.log('仓库:', fullRepoName);
       console.log('用户:', stargazerName);
       
-      // 使用环境变量中的邮箱
-      const subscriberEmail = process.env.EMAIL_TO;
-      console.log('发送邮件到:', subscriberEmail);
+      // 从 Edge Config 获取订阅列表
+      const subscriptions = await get('subscriptions') || [];
+      console.log('找到订阅数量:', subscriptions.length);
       
-      // 发送邮件
-      await transporter.sendMail({
-        from: process.env.EMAIL_FROM,
-        to: subscriberEmail,
-        subject: `🌟 新的 Star: ${repoName}`,
-        html: `
-          <h1>您的仓库收到了一个新的 Star!</h1>
-          <p><strong>仓库:</strong> ${repoName}</p>
-          <p><strong>用户:</strong> <a href="${stargazerUrl}">${stargazerName}</a></p>
-          <p>感谢您使用 GitHub Star 通知服务!</p>
-        `,
+      // 查找订阅了该仓库的用户
+      const matchingSubscriptions = subscriptions.filter(sub => 
+        sub.owner === repoOwner && 
+        sub.repo === repoName && 
+        sub.status === 'active'
+      );
+      
+      console.log('匹配的订阅数量:', matchingSubscriptions.length);
+      
+      if (matchingSubscriptions.length === 0) {
+        console.log('没有找到该仓库的订阅');
+        return NextResponse.json({ 
+          success: true, 
+          message: '没有找到该仓库的订阅' 
+        });
+      }
+      
+      // 向所有订阅者发送邮件
+      for (const subscription of matchingSubscriptions) {
+        console.log(`发送邮件到: ${subscription.email}`);
+        
+        try {
+          await transporter.sendMail({
+            from: process.env.EMAIL_FROM,
+            to: subscription.email,
+            subject: `🌟 新的 Star: ${fullRepoName}`,
+            html: `
+              <h1>您订阅的仓库收到了一个新的 Star!</h1>
+              <p><strong>仓库:</strong> ${fullRepoName}</p>
+              <p><strong>用户:</strong> <a href="${stargazerUrl}">${stargazerName}</a></p>
+              <p>感谢您使用 GitHub Star 通知服务!</p>
+            `,
+          });
+          console.log(`邮件发送成功: ${subscription.email}`);
+        } catch (emailError) {
+          console.error(`邮件发送失败: ${subscription.email}`, emailError);
+        }
+      }
+      
+      return NextResponse.json({ 
+        success: true, 
+        message: `已向 ${matchingSubscriptions.length} 个订阅者发送通知` 
       });
-      
-      console.log('邮件发送成功');
-      return NextResponse.json({ success: true });
     }
     
     console.log(`非处理事件: ${eventType}/${payload.action || '无动作'}`);
@@ -123,9 +155,4 @@ export async function POST(req) {
   }
 }
 
-// 禁用默认的请求体解析，因为我们需要原始请求体来验证签名
-export const config = {
-  api: {
-    bodyParser: false,
-  },
-};
+// 禁用默认的请
