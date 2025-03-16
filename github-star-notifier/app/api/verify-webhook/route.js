@@ -1,8 +1,6 @@
 import { NextResponse } from 'next/server';
-import nodemailer from 'nodemailer';
 import crypto from 'crypto';
-import { Readable } from 'stream';
-import { createClient } from '@vercel/edge-config';
+import nodemailer from 'nodemailer';
 
 // 配置邮件发送器
 const transporter = nodemailer.createTransport({
@@ -15,147 +13,99 @@ const transporter = nodemailer.createTransport({
   },
 });
 
-// 辅助函数：将请求体转换为字符串
-async function buffer(readable) {
-  const chunks = [];
-  for await (const chunk of readable) {
-    chunks.push(typeof chunk === 'string' ? Buffer.from(chunk) : chunk);
-  }
-  return Buffer.concat(chunks);
-}
+// 固定接收者邮箱
+const RECIPIENT_EMAIL = process.env.RECIPIENT_EMAIL;
 
 export async function POST(req) {
   try {
-    console.log('收到 Webhook 请求');
+    // 验证 GitHub Webhook 签名
+    const signature = req.headers.get('x-hub-signature-256');
+    const body = await req.text();
     
-    // 获取事件类型
-    const eventType = req.headers.get('x-github-event') || req.headers.get('X-GitHub-Event');
-    console.log('事件类型:', eventType);
-    
-    // 获取 GitHub 签名 (支持大小写和两种签名算法)
-    const signature = 
-      req.headers.get('x-hub-signature-256') || 
-      req.headers.get('X-Hub-Signature-256');
-    
-    console.log('GitHub 签名:', signature);
-    
-    if (!signature) {
-      console.error('缺少签名');
-      return NextResponse.json({ error: '缺少签名' }, { status: 401 });
+    if (!verifySignature(body, signature)) {
+      console.error('Webhook 签名验证失败');
+      return NextResponse.json({ error: '签名验证失败' }, { status: 401 });
     }
     
-    // 获取原始请求体
-    const rawBody = await buffer(Readable.fromWeb(req.body));
-    const bodyString = rawBody.toString('utf8');
-    console.log('请求体:', bodyString.substring(0, 100) + '...');
+    const event = req.headers.get('x-github-event');
+    const payload = JSON.parse(body);
     
-    // 解析请求体
-    const payload = JSON.parse(bodyString);
-    
-    // 使用环境变量中的密钥
-    const secret = process.env.GITHUB_WEBHOOK_SECRET;
-    console.log('使用密钥 (前几位):', secret.substring(0, 5) + '...');
-    
-    // 验证签名
-    const hmac = crypto.createHmac('sha256', secret);
-    hmac.update(bodyString);
-    const digest = 'sha256=' + hmac.digest('hex');
-    console.log('计算的签名:', digest);
-    
-    if (signature !== digest) {
-      console.error('签名验证失败');
-      console.error('收到的签名:', signature);
-      console.error('计算的签名:', digest);
-      
-      // 临时解决方案：跳过签名验证
-      console.log('跳过签名验证，继续处理请求');
-      // return NextResponse.json({ error: '签名无效' }, { status: 401 });
-    } else {
-      console.log('签名验证成功');
+    // 只处理 star 事件
+    if (event !== 'star') {
+      return NextResponse.json({ message: '非 star 事件，已忽略' });
     }
     
-    // 处理 ping 事件
-    if (eventType === 'ping') {
-      console.log('收到 ping 事件，响应 pong');
-      return NextResponse.json({ 
-        success: true, 
-        message: 'pong',
-        zen: payload.zen || 'Welcome to GitHub Webhook'
-      });
+    const { action, repository, sender } = payload;
+    
+    // 只处理新增 star 的事件
+    if (action !== 'created') {
+      return NextResponse.json({ message: `非新增 star 事件 (${action})，已忽略` });
     }
     
-    // 验证是否为 star 事件
-    if (eventType === 'star' && payload.action === 'starred') {
-      const repoOwner = payload.repository?.owner?.login || '';
-      const repoName = payload.repository?.name || '';
-      const fullRepoName = payload.repository?.full_name || '未知仓库';
-      const stargazerName = payload.sender?.login || '未知用户';
-      const stargazerUrl = payload.sender?.html_url || '#';
-      
-      console.log('仓库:', fullRepoName);
-      console.log('用户:', stargazerName);
-      
-      // 创建 Edge Config 客户端
-      const edgeConfig = createClient(process.env.EDGE_CONFIG);
-      
-      // 从 Edge Config 获取订阅列表
-      const subscriptions = await edgeConfig.get('subscriptions') || [];
-      console.log('找到订阅数量:', subscriptions.length);
-      
-      // 查找订阅了该仓库的用户
-      const matchingSubscriptions = subscriptions.filter(sub => 
-        sub.owner === repoOwner && 
-        sub.repo === repoName && 
-        sub.status === 'active'
+    const owner = repository.owner.login;
+    const repo = repository.name;
+    const stargazer = sender.login;
+    
+    console.log(`收到 star 事件: ${stargazer} -> ${owner}/${repo}`);
+    
+    // 检查是否配置了接收者邮箱
+    if (!RECIPIENT_EMAIL) {
+      console.error('未配置接收者邮箱，无法发送通知');
+      return NextResponse.json(
+        { success: false, error: '未配置接收者邮箱' }, 
+        { status: 500 }
       );
-      
-      console.log('匹配的订阅数量:', matchingSubscriptions.length);
-      
-      if (matchingSubscriptions.length === 0) {
-        console.log('没有找到该仓库的订阅');
-        return NextResponse.json({ 
-          success: true, 
-          message: '没有找到该仓库的订阅' 
-        });
-      }
-      
-      // 向所有订阅者发送邮件
-      for (const subscription of matchingSubscriptions) {
-        console.log(`发送邮件到: ${subscription.email}`);
-        
-        try {
-          await transporter.sendMail({
-            from: process.env.EMAIL_FROM,
-            to: subscription.email,
-            subject: `🌟 新的 Star: ${fullRepoName}`,
-            html: `
-              <h1>您订阅的仓库收到了一个新的 Star!</h1>
-              <p><strong>仓库:</strong> ${fullRepoName}</p>
-              <p><strong>用户:</strong> <a href="${stargazerUrl}">${stargazerName}</a></p>
-              <p>感谢您使用 GitHub Star 通知服务!</p>
-            `,
-          });
-          console.log(`邮件发送成功: ${subscription.email}`);
-        } catch (emailError) {
-          console.error(`邮件发送失败: ${subscription.email}`, emailError);
-        }
-      }
-      
-      return NextResponse.json({ 
-        success: true, 
-        message: `已向 ${matchingSubscriptions.length} 个订阅者发送通知` 
-      });
     }
     
-    console.log(`非处理事件: ${eventType}/${payload.action || '无动作'}`);
-    return NextResponse.json({ 
-      success: true, 
-      message: `收到 ${eventType} 事件` 
-    });
+    // 发送通知邮件
+    try {
+      await transporter.sendMail({
+        from: process.env.EMAIL_FROM,
+        to: RECIPIENT_EMAIL,
+        subject: `🌟 ${owner}/${repo} 获得了新的 Star!`,
+        html: `
+          <h1>新 Star 通知</h1>
+          <p>您的仓库 <strong>${owner}/${repo}</strong> 刚刚获得了一个新的 Star!</p>
+          <p>用户 <a href="https://github.com/${stargazer}">${stargazer}</a> 在 ${new Date().toLocaleString()} 为该仓库点了 Star。</p>
+          <p>当前 Star 总数: ${repository.stargazers_count}</p>
+          <hr>
+          <p><small>此邮件由 StarNotify 自动发送。</small></p>
+        `,
+      });
+      console.log(`已发送通知邮件至: ${RECIPIENT_EMAIL}`);
+      
+      return NextResponse.json({ 
+        success: true,
+        message: `已处理 ${owner}/${repo} 的 star 事件并发送通知`
+      });
+    } catch (emailError) {
+      console.error(`发送邮件失败:`, emailError);
+      return NextResponse.json(
+        { success: false, error: '发送邮件失败', details: emailError.message }, 
+        { status: 500 }
+      );
+    }
   } catch (error) {
-    console.error('处理 webhook 失败:', error);
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    console.error('处理 Webhook 失败:', error);
+    return NextResponse.json(
+      { success: false, error: error.message }, 
+      { status: 500 }
+    );
   }
+}
+
+// 验证 GitHub Webhook 签名
+function verifySignature(payload, signature) {
+  if (!signature) return false;
+  
+  const secret = process.env.GITHUB_WEBHOOK_SECRET;
+  const hmac = crypto.createHmac('sha256', secret);
+  const digest = 'sha256=' + hmac.update(payload).digest('hex');
+  
+  return crypto.timingSafeEqual(
+    Buffer.from(digest),
+    Buffer.from(signature)
+  );
 }
 
 // 禁用默认的请
