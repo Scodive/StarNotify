@@ -126,7 +126,7 @@ export async function POST(req) {
         try {
           await transporter.sendMail({
             from: process.env.EMAIL_FROM,
-            to: subscription.email,
+            to:  process.env.RECIPIENT_EMAIL,
             subject: `🌟 新的 Star: ${fullRepoName}`,
             html: `
               <h1>您订阅的仓库收到了一个新的 Star!</h1>
