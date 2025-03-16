@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@vercel/edge-config';
+import { createClient } from '@/utils/supabase/server';
 
 export async function GET(req) {
   try {
@@ -9,11 +9,18 @@ export async function GET(req) {
       return NextResponse.json({ error: '未授权' }, { status: 401 });
     }
     
-    // 创建 Edge Config 客户端
-    const edgeConfig = createClient(process.env.EDGE_CONFIG);
+    // 创建 Supabase 客户端
+    const supabase = await createClient();
     
     // 获取所有订阅
-    const subscriptions = await edgeConfig.get('subscriptions') || [];
+    const { data: subscriptions, error } = await supabase
+      .from('User')
+      .select('*');
+    
+    if (error) {
+      console.error('查询订阅失败:', error);
+      throw error;
+    }
     
     return NextResponse.json({ 
       success: true,
