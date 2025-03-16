@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
 import nodemailer from 'nodemailer';
 import crypto from 'crypto';
-import { Readable } from 'stream';
-import { createClient } from '@vercel/edge-config';
+// import { Readable } from 'stream';
+// import { createClient } from '@vercel/edge-config';
 
 // 配置邮件发送器
 const transporter = nodemailer.createTransport({
@@ -86,8 +86,8 @@ export async function POST(req) {
     
     // 验证是否为 star 事件
     if (eventType === 'star' && payload.action === 'starred') {
-      const repoOwner = payload.repository?.owner?.login || '';
-      const repoName = payload.repository?.name || '';
+      // const repoOwner = payload.repository?.owner?.login || '';
+      // const repoName = payload.repository?.name || '';
       const fullRepoName = payload.repository?.full_name || '未知仓库';
       const stargazerName = payload.sender?.login || '未知用户';
       const stargazerUrl = payload.sender?.html_url || '#';
