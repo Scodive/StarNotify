@@ -92,37 +92,37 @@ export async function POST(req) {
       const stargazerName = payload.sender?.login || '未知用户';
       const stargazerUrl = payload.sender?.html_url || '#';
       
-      console.log('仓库:', fullRepoName);
-      console.log('用户:', stargazerName);
+      // console.log('仓库:', fullRepoName);
+      // console.log('用户:', stargazerName);
       
-      // 创建 Edge Config 客户端
-      const edgeConfig = createClient(process.env.EDGE_CONFIG);
+      // // 创建 Edge Config 客户端
+      // const edgeConfig = createClient(process.env.EDGE_CONFIG);
       
-      // 从 Edge Config 获取订阅列表
-      const subscriptions = await edgeConfig.get('subscriptions') || [];
-      console.log('找到订阅数量:', subscriptions.length);
+      // // 从 Edge Config 获取订阅列表
+      // const subscriptions = await edgeConfig.get('subscriptions') || [];
+      // console.log('找到订阅数量:', subscriptions.length);
       
-      // 查找订阅了该仓库的用户
-      const matchingSubscriptions = subscriptions.filter(sub => 
-        sub.owner === repoOwner && 
-        sub.repo === repoName && 
-        sub.status === 'active'
-      );
+      // // 查找订阅了该仓库的用户
+      // const matchingSubscriptions = subscriptions.filter(sub => 
+      //   sub.owner === repoOwner && 
+      //   sub.repo === repoName && 
+      //   sub.status === 'active'
+      // );
       
-      console.log('匹配的订阅数量:', matchingSubscriptions.length);
+      // console.log('匹配的订阅数量:', matchingSubscriptions.length);
       
-      if (matchingSubscriptions.length === 0) {
-        console.log('没有找到该仓库的订阅');
-        return NextResponse.json({ 
-          success: true, 
-          message: '没有找到该仓库的订阅' 
-        });
-      }
+      // if (matchingSubscriptions.length === 0) {
+      //   console.log('没有找到该仓库的订阅');
+      //   return NextResponse.json({ 
+      //     success: true, 
+      //     message: '没有找到该仓库的订阅' 
+      //   });
+      // }
       
-      // 向所有订阅者发送邮件
-      for (const subscription of matchingSubscriptions) {
-        console.log(`发送邮件到: ${subscription.email}`);
-        
+      // // 向所有订阅者发送邮件
+      // for (const subscription of matchingSubscriptions) {
+      //   console.log(`发送邮件到: ${subscription.email}`);
+      if(true){  
         try {
           await transporter.sendMail({
             from: process.env.EMAIL_FROM,
