@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
-import crypto from 'crypto';
 import nodemailer from 'nodemailer';
+import { createClient } from '@vercel/edge-config';
 
 // 配置邮件发送器
 const transporter = nodemailer.createTransport({
@@ -13,99 +13,121 @@ const transporter = nodemailer.createTransport({
   },
 });
 
-// 固定接收者邮箱
-const RECIPIENT_EMAIL = process.env.RECIPIENT_EMAIL;
-
 export async function POST(req) {
   try {
-    // 验证 GitHub Webhook 签名
-    const signature = req.headers.get('x-hub-signature-256');
-    const body = await req.text();
+    const { owner, repo, email, secret } = await req.json();
+    console.log('收到验证请求:', { owner, repo, email });
     
-    if (!verifySignature(body, signature)) {
-      console.error('Webhook 签名验证失败');
-      return NextResponse.json({ error: '签名验证失败' }, { status: 401 });
-    }
-    
-    const event = req.headers.get('x-github-event');
-    const payload = JSON.parse(body);
-    
-    // 只处理 star 事件
-    if (event !== 'star') {
-      return NextResponse.json({ message: '非 star 事件，已忽略' });
-    }
-    
-    const { action, repository, sender } = payload;
-    
-    // 只处理新增 star 的事件
-    if (action !== 'created') {
-      return NextResponse.json({ message: `非新增 star 事件 (${action})，已忽略` });
-    }
-    
-    const owner = repository.owner.login;
-    const repo = repository.name;
-    const stargazer = sender.login;
-    
-    console.log(`收到 star 事件: ${stargazer} -> ${owner}/${repo}`);
-    
-    // 检查是否配置了接收者邮箱
-    if (!RECIPIENT_EMAIL) {
-      console.error('未配置接收者邮箱，无法发送通知');
+    if (!owner || !repo || !email || !secret) {
       return NextResponse.json(
-        { success: false, error: '未配置接收者邮箱' }, 
+        { error: '缺少必要参数' }, 
+        { status: 400 }
+      );
+    }
+    
+    // 验证密钥是否匹配
+    if (secret !== process.env.GITHUB_WEBHOOK_SECRET) {
+      return NextResponse.json(
+        { error: '密钥不匹配' }, 
+        { status: 401 }
+      );
+    }
+    
+    // 检查 EDGE_CONFIG 环境变量
+    if (!process.env.EDGE_CONFIG) {
+      console.error('缺少 EDGE_CONFIG 环境变量');
+      return NextResponse.json(
+        { error: '服务器配置错误' }, 
         { status: 500 }
       );
     }
     
-    // 发送通知邮件
     try {
+      // 创建 Edge Config 客户端
+      const edgeConfig = createClient(process.env.EDGE_CONFIG);
+      console.log('Edge Config 客户端已创建');
+      
+      // 获取现有的订阅列表
+      console.log('正在获取订阅列表...');
+      let subscriptions = await edgeConfig.get('subscriptions');
+      console.log('获取到的订阅列表:', subscriptions);
+      
+      // 确保 subscriptions 是数组
+      if (!Array.isArray(subscriptions)) {
+        console.log('订阅列表不是数组，初始化为空数组');
+        subscriptions = [];
+      }
+      
+      // 查找并更新订阅状态
+      let found = false;
+      const updatedSubscriptions = subscriptions.map(sub => {
+        if (sub.owner === owner && sub.repo === repo && sub.email === email) {
+          found = true;
+          console.log('找到匹配的订阅，更新状态为 active');
+          return { ...sub, status: 'active', verifiedAt: new Date().toISOString() };
+        }
+        return sub;
+      });
+      
+      if (!found) {
+        console.log('未找到匹配的订阅，添加新订阅');
+        updatedSubscriptions.push({
+          owner,
+          repo,
+          email,
+          createdAt: new Date().toISOString(),
+          status: 'active',
+          verifiedAt: new Date().toISOString()
+        });
+      }
+      
+      // 保存更新后的订阅列表
+      console.log('正在保存更新后的订阅列表...');
+      await edgeConfig.set('subscriptions', updatedSubscriptions);
+      console.log('订阅列表已保存');
+      
+      // 再次获取订阅列表以验证保存是否成功
+      const verifySubscriptions = await edgeConfig.get('subscriptions');
+      console.log('验证保存后的订阅列表:', verifySubscriptions);
+      
+      console.log(`已激活订阅: ${owner}/${repo} -> ${email}`);
+    } catch (edgeConfigError) {
+      console.error('Edge Config 操作失败:', edgeConfigError);
+      console.log('Edge Config 失败，但继续发送确认邮件');
+    }
+    
+    // 发送确认邮件
+    try {
+      console.log('正在发送确认邮件...');
       await transporter.sendMail({
         from: process.env.EMAIL_FROM,
-        to: RECIPIENT_EMAIL,
-        subject: `🌟 ${owner}/${repo} 获得了新的 Star!`,
+        to: email,
+        subject: `已订阅 ${owner}/${repo} 的 Star 通知`,
         html: `
-          <h1>新 Star 通知</h1>
-          <p>您的仓库 <strong>${owner}/${repo}</strong> 刚刚获得了一个新的 Star!</p>
-          <p>用户 <a href="https://github.com/${stargazer}">${stargazer}</a> 在 ${new Date().toLocaleString()} 为该仓库点了 Star。</p>
-          <p>当前 Star 总数: ${repository.stargazers_count}</p>
-          <hr>
-          <p><small>此邮件由 StarNotify 自动发送。</small></p>
+          <h1>订阅确认</h1>
+          <p>您已成功订阅 <strong>${owner}/${repo}</strong> 仓库的 Star 通知。</p>
+          <p>当该仓库收到新的 Star 时，我们会向您发送邮件通知。</p>
+          <p>感谢您使用 StarNotify 服务！</p>
         `,
       });
-      console.log(`已发送通知邮件至: ${RECIPIENT_EMAIL}`);
-      
-      return NextResponse.json({ 
-        success: true,
-        message: `已处理 ${owner}/${repo} 的 star 事件并发送通知`
-      });
+      console.log(`确认邮件已发送至: ${email}`);
     } catch (emailError) {
-      console.error(`发送邮件失败:`, emailError);
+      console.error('发送确认邮件失败:', emailError);
       return NextResponse.json(
-        { success: false, error: '发送邮件失败', details: emailError.message }, 
+        { success: false, error: '发送确认邮件失败，但订阅可能已激活' }, 
         { status: 500 }
       );
     }
+    
+    return NextResponse.json({ 
+      success: true,
+      message: '验证成功，已发送确认邮件' 
+    });
   } catch (error) {
-    console.error('处理 Webhook 失败:', error);
+    console.error('验证处理失败:', error);
     return NextResponse.json(
       { success: false, error: error.message }, 
       { status: 500 }
     );
   }
 }
-
-// 验证 GitHub Webhook 签名
-function verifySignature(payload, signature) {
-  if (!signature) return false;
-  
-  const secret = process.env.GITHUB_WEBHOOK_SECRET;
-  const hmac = crypto.createHmac('sha256', secret);
-  const digest = 'sha256=' + hmac.update(payload).digest('hex');
-  
-  return crypto.timingSafeEqual(
-    Buffer.from(digest),
-    Buffer.from(signature)
-  );
-}
-
-// 禁用默认的请
